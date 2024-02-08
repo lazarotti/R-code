@@ -1,0 +1,782 @@
+---
+title: "Projeto Integrado - Turma 5DTSR"
+author: 
+  - "Bruno Ernesto Cerentini - RM 351018"
+  - "Alessandro Lazarotti - RM 352517"
+  - "Thiago Furnielis - RM 350840"
+  - "Ciro Vargas de Souza Marques - RM 352843"
+  
+date: "20-12-2023"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(base)
+library(readr)
+library(tidyverse)
+library(summarytools)
+library(ggplot2)
+library(gmodels)
+library(dplyr)
+
+
+df <- read_delim("Base_ScoreCredito_QuantumFinance.csv", 
+                 delim = ";", escape_double = FALSE, locale = locale(decimal_mark = ",", 
+                                                                     grouping_mark = "."), trim_ws = TRUE)
+#nao mostrar numero em escala cientifica
+options(scipen = 9999)
+
+```
+```{r functions, include=FALSE}
+
+# funcao para encontrar a moda da coluna
+calcula_moda <- function(coluna) {
+  tabela_freq <- table(coluna)
+  moda <- as.numeric(names(tabela_freq[tabela_freq == max(tabela_freq,na.rm = TRUE)]))
+  return(moda)
+}
+
+#funcao para encontrar k usando sturges
+encontrar_k <- function(df) {
+  n <- nrow(df)
+  k<- 1+(10/3)*log10(n)
+  return(ceiling(k))
+}
+
+# encontrar labels de classes dos valores quantitativos continuos
+transformar_em_classes <- function(df,coluna,k) {
+  minvariavel = min(coluna)
+  maxvariavel = max(coluna)
+  amplitude = maxvariavel-minvariavel
+  intervalo <- ceiling(amplitude/k)
+  x <- c()
+  for(i in 1:k){
+    x<- c(x,i/k)
+  }
+  classes <- trunc(x*amplitude)+minvariavel
+  
+  classes <- c(minvariavel,classes)
+  
+  return(classes)
+}
+
+gera_labels <- function(df,coluna,classes){
+  labels <- character(length(classes) - 1)
+  
+  labels[1] <- paste0(classes[1], "-", classes[2])
+  for (i in 2:(length(classes) - 1)) {
+    labels[i] <- paste0(classes[i] + 1, "-", classes[i + 1])
+  }
+  return (labels)
+}
+
+#Funcao para descrever colunas do dataframe e gerar o hist de frequencia
+describevar<- function(x,nomedavariavel) {
+  print(paste("Variavel analisada: " ,nomedavariavel))
+  minvariavel <- min(x,na.rm = TRUE)
+  print(paste("Min: " ,minvariavel))
+  maxvariavel <- max(x, na.rm = TRUE)
+  print(paste("Max: " ,maxvariavel))
+  meanx <- mean(x,na.rm = TRUE)
+  print(paste("Media: ", meanx))
+  medianx <- median(x,na.rm = TRUE)
+  print(paste("Mediana: ", medianx))
+  # Calculando a variância
+  variancia <- var(x,na.rm = TRUE)
+  cat("Variância:", variancia, "\n")
+  # Calculando o desvio padrão
+  desvio_padrao <- sd(x,na.rm = TRUE)
+  cat("Desvio Padrão:", desvio_padrao, "\n")
+  moda <- calcula_moda(x)
+  print(paste("Moda: ", moda))
+  
+  hist(variavel, breaks ="Sturges", main = 
+         paste("Histograma de", nomedavariavel),
+       xlab=nomedavariavel,ylab = 'Frequencia')
+}
+
+#gera histograma comparativo com score_level
+gera_hist_comp <- function(variavel, breaks, nomevariavel){
+  ggplot(df, aes(x = variavel, fill = factor(SCORE_LEVEL))) +
+      geom_histogram(breaks=breaks, binwidth = 5, position = "identity", alpha = 0.7, na.rm = TRUE) +
+    labs(title = paste("Relação entre ", nomevariavel, " e SCORE Level"),
+         x = nomevariavel,
+         y = "Frequencia") +
+    scale_fill_manual(values = c("red", "green"), name = "SCORE_CREDITO",
+                      labels = c("Score Negativo", "Score Positivo"))  +
+    theme_minimal()
+}
+
+# Exibe tabela de proporcao baseado no prop.table
+exibe_tabela_proporcao <-function(groupby_var, column_var, nomevariavel=""){
+  
+  # Tabela de contingencia
+   tabela_contingencia <- table(factor(groupby_var),factor(column_var), useNA = "no")
+   
+  
+  return(na.omit(prop.table(tabela_contingencia, margin = 1)*100))
+}
+
+# Gera grafico simples de barra
+gera_barra_simples <- function(variavel, nomevariavel){
+  ggplot(df, aes(x = variavel)) +
+    geom_bar(fill="lightblue") +
+    labs(title = paste("Frequencia de", nomevariavel),
+         x = nomevariavel, 
+         y = "Frequência")+
+    theme_minimal()
+}
+
+# Gera grafico de barras comparativo com SCORE LEVEL
+gera_barra_comparativo <- function(variavel, nomevariavel, tipo="dodge"){
+  ggplot(df, aes(x = factor(variavel), fill = SCORE_LEVEL)) +
+    geom_bar(position = tipo, stat = "count", na.rm = TRUE, ) +
+    labs(title = paste("Relação entre ", nomevariavel, " e SCORE_CREDITO"),
+         x = nomevariavel,
+         y = "Frequencia",
+         fill = "Score Level")+
+    theme_minimal()
+}
+
+# gera grafico dispersão relatico a Credit Score
+gera_grafico_dispersao <- function(variavel, nomevariavel){
+  
+ggplot(filter(df, !is.na(!!sym(variavel))),aes(x=!!sym(variavel),y=SCORE_CREDITO)) +
+     geom_point() +
+     geom_smooth(method = lm, se=FALSE) +
+  labs(x = labelvariavel, y = "Credit Score") + 
+ggtitle(paste("Dispercao", nomevariavel,"X Credit Score"))
+
+}
+
+# Gera grafico 100% empilhado relativo a SCORE_LEVEL
+gera_grafico_empilhado <- function (variavel, nomevariavel){
+  freq_SCORE_LEVEL <- df %>%
+    filter(!is.na(!!sym(variavel))) %>%
+    select(SCORE_LEVEL, !!sym(variavel)) %>%
+    group_by(SCORE_LEVEL, !!sym(variavel)) %>%
+    summarise(obs = n()) %>%
+    mutate(freq = obs / sum(obs) * 100)
+  
+  freq_col_total <- df %>%
+    filter(!is.na(!!sym(variavel))) %>%
+    select(!!sym(variavel)) %>%
+    group_by(!!sym(variavel)) %>%
+    summarise(obs = n()) %>%
+    mutate(freq = obs / sum(obs) * 100) %>%
+    mutate(SCORE_LEVEL = "Total") %>%
+    relocate(SCORE_LEVEL, .before = !!sym(variavel))
+  
+  freq_final <- freq_SCORE_LEVEL %>%
+    rbind(freq_col_total)
+
+
+  ggplot(freq_final,
+         aes(
+           x = SCORE_LEVEL,
+           y = freq,
+           fill = !!sym(variavel),
+           label = round(freq, 1),
+         )) +
+    geom_col(na.rm = TRUE) +
+    geom_text(position = position_stack(vjust = 0.5)) +
+    labs(title = paste("Score Level segundo", nomevariavel),
+         x = "Score Level", y = "%") 
+}
+
+```
+
+
+## Objetivo
+
+Este relatorio é a Parte 1 de um estudo sobre a base de clientes da **Quantum Finance**. O estudo sobre a base tem como objetivo auxiliar na elaboracao de um novo modelo de *Credit Scoring* que possa trazer novos clientes com o perfil de baixo risco de crédito.
+
+O relatório com as analises dos dados esta organizado e com as interpretacoes dos resultados.
+
+## Conhecendo a populacao
+As informacoes abaixos servem para termos maior compreenssao sobre a base *Base_ScoreCredito_QuantumFinance.csv*.
+
+Atraves da analise estatistica das colunas entendermos a base e como ela se comporta.
+
+```{r Descricao dataset }
+# ajustar o tipo das colunas numericas que sao qualitativas categoricas
+
+df$casa_propria <- factor(df$casa_propria, labels = c("Nao possui", "Possui"))
+df$reg_moradia <- factor(df$reg_moradia)
+df$trabalha <- factor(df$trabalha, labels = c("Nao trabalha","Trabalha"))
+
+# definir como categoricas as demais q sao character
+df$sexo <- factor(df$sexo, levels = unique(df$sexo))
+df$estado_civil <- factor(df$estado_civil, levels = unique(df$estado_civil))
+df$escola <- factor(df$escola, levels = unique(df$escola))
+
+#setar NA para vl_imovel_em_mil caso não possua valor (0)
+df$vl_imovel_em_mil <- ifelse(df$vl_imovel_em_mil == 0, NA, df$vl_imovel_em_mil)
+
+#setar NA para estado civil, caso valor da String seja na
+#df$estado_civil <- ifelse(df$estado_civil== "na", NA,df$estado_civil)
+df$estado_civil[df$estado_civil == "na"] <- NA
+
+
+#excluir a coluna id pq é irrelevante para as analises
+df <- subset(df, select = -id)
+
+# Resumo estatistico de todas as colunas do Dataframe
+summary(df)
+# mostrar tipos das colunas do Dataframe
+str(df)
+
+```
+
+# Analise exploratoria de dados
+Abaixo teremos analises descritivas dos dados de maneira univariada, acompanhados tambem de suas  
+correlacoes e associacoes com *Credit Score* para avaliar o credit scoring para concessao de credito pessoal. Teremos tambem as hipoteses a serem trabalhadas para a elaboracao de um novo modelo.
+Seguindo parametros do [SERASA](https://www.serasa.com.br/score/blog/score-positivo/), scores acima de 500 sao tidos como **Positivos**, e abaixo disso **Negativos**.
+
+A categoria de bom ou mau pagador é utilizada para o modelo de inadimplencia PF. Nesse desafio é construir um modelo de credit scoring para conceder credito ou nao.
+
+`
+```{r define SCORE_LEVEL}
+
+#acima de 500 é score positivo
+df$SCORE_LEVEL <- ifelse(df$SCORE_CREDITO > 500, "SCORE_POSITIVO", "SCORE_NEGATIVO")
+#transformar em categorico
+df$SCORE_LEVEL = factor(df$SCORE_LEVEL)
+
+```
+
+
+```{r Score credito, echo=FALSE}
+variavel = df$SCORE_CREDITO
+
+freq <- table(df$SCORE_LEVEL)
+barplot(freq, main = "Grafico de barras de Score de Crédito\n  convertido para niveis de score", xlab = "Score de Crédito",
+        col = c("lightblue3","lightblue"), border = "black", names.arg = levels(df$SCORE_LEVEL), 
+        ylim = c(0, max(freq) + 1))
+legend("topright", legend = c("SCORE_NEGATIVO = SCORE_CREDITO <= 500 ",
+                              "SCORE_POSITIVO = SCORE_CREDITO > 500"),
+       fill = c("lightblue3","lightblue"), title = "SCORE_LEVEL",cex=0.7)
+
+describevar(variavel,"Score credito")
+
+```
+
+## Hipotese 1 - A idade, o tempo de permanencia no ultimo trabalho, o salario e o valor da moradia possui correlacao com Credit Score ?
+
+Nesta hipotese vamos explorar as variaveis quantitativas continuas de nossa base a fim de analisar sua influencia no *Credit Score*
+
+### H 1.1 - Idade
+```{r idade, echo=FALSE}
+
+variavel = df$idade
+labelvariavel= "Idade"
+k<- encontrar_k(df)
+
+classes <- transformar_em_classes(df,variavel,k)
+labels <- gera_labels(df,variavel,classes)
+
+df$faixas_idade <-  cut(
+  x = variavel,
+  breaks = k,
+  labels = labels,
+  include.lowest = FALSE,
+)
+freq(df$faixas_idade)
+describevar(variavel, labelvariavel)
+
+#compara com SCORE_CREDIT
+gera_hist_comp(df$idade,classes,labelvariavel)
+
+#exibe tabela de proporcao com SCORE_LEVEL
+print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO "))
+exibe_tabela_proporcao(df$faixas_idade, df$SCORE_LEVEL, labelvariavel)
+
+boxplot(variavel ~ df$SCORE_LEVEL,xlab = "Score Level", ylab = labelvariavel)
+title(paste("Associacao entre", labelvariavel,"e Score Level"))
+
+gera_grafico_dispersao("idade",labelvariavel)
+
+
+```
+
+### H 1.2 - Tempo no ultimo trabalho
+
+```{r Tempo_ultimo_servico, echo=FALSE}
+variavel = df$tempo_ultimoservico
+labelvariavel = "Tempo Ultimo Servico"
+k<- encontrar_k(df)
+classes <- transformar_em_classes(df,variavel,k)
+labels <- gera_labels(df,variavel,classes)
+
+df$faixas_ultimo_servico <-  cut(
+  x = variavel,
+  breaks = k,
+  labels = labels,
+  include.lowest = FALSE,
+)
+freq(df$faixas_ultimo_servico)
+describevar(variavel,labelvariavel)
+
+#compara com SCORE_LEVEL
+gera_hist_comp(df$tempo_ultimoservico,classes,labelvariavel)
+
+#exibe tabela de proporcao com SCORE_LEVEL
+print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO "))
+exibe_tabela_proporcao(df$faixas_ultimo_servico, df$SCORE_LEVEL, labelvariavel)
+
+boxplot(variavel ~ df$SCORE_LEVEL,xlab = "Score Level", ylab = labelvariavel)
+title(paste("Associacao entre", labelvariavel,"e Score Level"))
+
+gera_grafico_dispersao("tempo_ultimoservico",labelvariavel)
+
+```
+
+### H.1.3 - Salario (em mil)
+
+```{r Salarios, echo=FALSE}
+variavel = df$vl_salario_mil
+labelvariavel = "Valor Salario (em mil)"
+
+k<- encontrar_k(df)
+classes <- transformar_em_classes(df,variavel,k)
+labels <- gera_labels(df,variavel,classes)
+
+df$faixas_salarios <-  cut(
+  x = variavel,
+  breaks = k,
+  labels = labels,
+  include.lowest = TRUE,
+)
+freq(df$faixas_salarios)
+describevar(variavel,"Valor Salario (em mil)")
+
+#compara com SCORE_LEVEL
+gera_hist_comp(variavel,classes,labelvariavel)
+
+#exibe tabela de proporcao com SCORE_LEVEL
+print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO "))
+exibe_tabela_proporcao(df$faixas_salarios,df$SCORE_LEVEL, labelvariavel)
+
+boxplot(variavel ~ df$SCORE_LEVEL,xlab = "Score Level", ylab = labelvariavel)
+title(paste("Associacao entre", labelvariavel,"e Score Level"))
+
+gera_grafico_dispersao("vl_salario_mil",labelvariavel)
+
+```
+
+### H.1.4 - Valor da moradia (em mil)
+
+```{r Valor Imovel, echo=FALSE, warning=FALSE, message=FALSE}
+
+#precisa se assegura que valoes de NA nao serao contabilizados para essa variavel
+variavel = na.omit(df$vl_imovel_em_mil)
+labelvariavel = "Valor Imovel"
+
+k<- encontrar_k(df)
+classes <- transformar_em_classes(df,variavel,k)
+labels <- gera_labels(df,variavel,classes)
+df$faixas_moradia <-  cut(
+  x = df$vl_imovel_em_mil,
+  breaks = k,
+  labels = labels,
+  include.lowest = FALSE,
+)
+
+freq(df$faixas_moradia)
+
+describevar(variavel,"Valor imovel")
+
+#compara com SCORE_LEVEL
+na_imovel_omitted <- na.omit(df$vl_imovel_em_mil)
+gera_hist_comp(df$vl_imovel_em_mil,classes,labelvariavel)
+
+#exibe tabela de proporcao com SCORE_LEVEL
+print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO "))
+exibe_tabela_proporcao(df$faixas_moradia, df$SCORE_LEVEL,labelvariavel)
+
+
+boxplot(df$vl_imovel_em_mil ~ df$SCORE_LEVEL,xlab = "Score Level", ylab = labelvariavel, na.action = na.exclude)
+title(paste("Associacao entre", labelvariavel,"e Score Level"))
+
+gera_grafico_dispersao("vl_imovel_em_mil",labelvariavel)
+
+
+```
+
+# Conclusões sobre a Hipotese 1:
+
+Todos os graficos apresentados sobre cada uma das variaveis quantitativas continuas acima demonstram uma associacao das mesmas com o SCORE dos clientes. Esta associacao tambem é comprovada por sua correlacao expressa pela matriz tabular e grafica abaixo e o grafico de calor da correlacao: 
+
+```{r Correlacao, warning=FALSE, message=FALSE, echo=FALSE}
+dadosquant <- df %>%
+  select(idade,
+         tempo_ultimoservico,
+         vl_salario_mil,
+         vl_imovel_em_mil,
+         SCORE_CREDITO) %>%
+  na.omit()
+
+correlacao <- cor(dadosquant)
+print(correlacao)
+
+library(PerformanceAnalytics)
+chart.Correlation(dadosquant, histogram = TRUE)
+
+library(corrplot)
+corrplot(correlacao, type = "upper", method = "number")
+
+
+```
+
+Como pode-se observar existe forte evidência estatística contra a hipotese nula da nao correlacao destas variaveis quantitativas com **SCORE_CREDITO**, dado que todos os valores sao diferentes de 0, portanto de fato existe uma correlação nos graus abaixo:
+
+- A **idade** tem uma correlacao positiva fraca com SCORE_CREDITO.
+- O **tempo_ultimoservico** tem uma correlacao positiva moderada com SCORE_CREDITO.
+- O **vl_salario_mil** tem uma correlacao positiva moderada a forte com SCORE_CREDITO.
+- O **vl_imovel_em_mil** tem uma correlacao positiva muito forte com SCORE_CREDITO.
+
+
+## Hipotese 2 - A escolaridade, o sexo, o estado civil, se trabalha, se possui casa propria e a regiao da moradia possuem alguma associacao nos resultados de credito positivo ou negativo?
+
+Agora vamos analisar o impacto das variaveis qualitativas de nossa base e seu possivel impacto
+nas duas categorias de *SCORE_LEVEL* (Positivo/Negativo)
+
+### H 2.1 - Escolaridade
+
+```{r Escolaridade,echo=FALSE, warning=FALSE, message=FALSE}
+
+#Tabela de Frequencia
+freq(df$escola)
+
+# Pie Chart de distribuição no Dataframe
+pie(table(df$escola),labels = c("Doutorado", "Ensino Fundamental", 
+                                "Ensino Medio", "Graduacao", "Mestrado"), 
+    main = "Distribuição de Escolaridade",
+    col = c("lightblue", "seashell2", "wheat2", "white","ivory"))
+
+# Exibe tabela de proporcao com SCORE_LEVEL
+tabela = exibe_tabela_proporcao(df$SCORE_LEVEL,df$escola,"Escolaridade")
+print("Tabela de proporção Escolaridade X SCORE_CREDITO ")
+print(tabela)
+
+# Criar Pie Chart comparativo com SCORE_LEVEL
+pie(tabela, 
+    labels = c("Graduacao Score Negativo", "Graduacao Score Positivo",
+               "E. Fundam Score Negativo", "E. Fundam Score positivo",
+               "Doutarado Score Negativo",
+               "Doutorado Score Positivo", "Mestrado Score Negativo",
+               "Mestrado Score Positivo", "Ensino Medio Negativo",
+               "Ensino Medio Positivo"
+    ), 
+    main = "Relação entre Escolaridade e Score de Crédito",
+    col = c("red4", "seagreen4", "red3", "seagreen3","red2",
+            "seagreen2", "red1", "lightgreen", "brown3","seagreen1"))
+
+    #col = c("red3", "seagreen2", "red3", "seagreen2","red3",
+    #        "seagreen2", "red3", "seagreen2", "red3","seagreen2"))
+
+gera_grafico_empilhado("escola", "Escolaridade")
+
+
+# Tabela de frequencia bivariada
+CrossTable(df$SCORE_LEVEL ,df$escola, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+           prop.chisq = FALSE,chisq = TRUE)
+
+```
+
+#### Conclusao da Hipotese 2.1
+
+Os graficos demonstram existir associacao entre **escolaridade** e o **SCORE LEVEL**. Notavelmente os alunos que possuem apenas *Ensino Fundamental* equivalem a **28%** do total das pessoas com *SCORE_NEGATIVO* equanto **12%** com *Ensino Fundamental* equivalem aquelas com **SCORE_POSITIVO**. 
+Com a excecao das pessoas com *Ensino Fundamental*, todos os outros niveis de escolaridade possuem percetual maior para **SCORE_POSITIVO**. 
+
+O *p_valor* de **0.000000000000000000000000000000000000000000000000000000000000000000000000006816781** indica que devemos rejeitar uma Hipotese nula de não associação, visto que **p_value < 0.05**, logo, existe uma associação significante entre o atributo **escola** e o **SCORE_LEVEL**.
+
+
+### H 2.2 - Sexo
+
+```{r Sexo, echo=FALSE, warning=FALSE, message=FALSE}
+#Tabela de Frequencia
+freq(df$sexo)
+
+# Pie Chart de distribuição no Dataframe
+pie(table(df$sexo),labels = c("Mulheres", "Homens"), 
+    col = c("mistyrose", "lightblue"), main = "Distribuição de Genero")
+
+# Exibe tabela de proporcao com SCORE_LEVEL
+tabela = exibe_tabela_proporcao(df$SCORE_LEVEL,df$sexo,"Sexo")
+print("Tabela de proporção Sexo X SCORE_CREDITO ")
+print(tabela)
+
+pie(tabela, 
+    labels = c("Mulher Score Negativo", "Mulher Score Positivo",
+               "Homem Score Negativo", "Homem Score Positivo"), 
+    main = "Relação entre Sexo e Score de Crédito",
+    col = c("red4", "seagreen4", "red3", "seagreen2"))
+
+gera_grafico_empilhado("sexo", "Genero")
+
+# Tabela de frequncia bivariada
+CrossTable(df$SCORE_LEVEL ,df$sexo, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+           prop.chisq = FALSE,chisq = TRUE)
+
+```
+
+#### Conclusao da Hipotese 2.2
+
+Os graficos e tabelas mostram que 60.3% dos homens possuem SCORE_POSTIVO contra 39.7%, mostrando uma possivel associacao entre este atributo e o SCORE LEVEL.
+
+
+O *p_valor* de **0.000000000000000000000000000000000000000000000000000000000000000000000000000000000002640887** indica que devemos rejeitar uma Hipotese nula de não associação, visto que **p_value < 0.05**, logo, existe uma associação significante entre o atributo **sexo** e o **SCORE_LEVEL**.
+
+### H 2.3 - Estado Civil
+
+```{r Estado civil, echo=FALSE, warning=FALSE, message=FALSE}
+#Tabela de Frequencia
+freq(df$estado_civil)
+
+# Pie Chart de distribuição no Dataframe
+pie(table(df$estado_civil, useNA = "no"),labels = c("Casado", "Divorciado", 
+                                      "Solteiro"), 
+    main = "Distribuição de Estado Civil",
+    col = c("lightblue2", "seashell2", "wheat2"))
+
+# Exibe tabela de proporcao com SCORE_LEVEL
+tabela = exibe_tabela_proporcao(df$SCORE_LEVEL,df$estado_civil,"Estado Civil")
+
+print("Tabela de proporção Estado Civil X SCORE_CREDITO ")
+print(tabela)
+pie(tabela,
+    labels = c("Casado Score Negativo", "Casado Score Positivo",
+               "Solteiro Score Negativo",
+               "Solteiro Score Positivo", "Divorciado Score Negativo",
+               "Divorciado Score Positivo"),
+    main = "Relação entre Estado Civil e Score de Crédito",
+    col = c("red3", "green3", "red2",
+            "green2", "red", "green"))
+
+gera_grafico_empilhado("estado_civil", "Estado Civil")
+
+# Tabela de frequencia bivariada
+CrossTable(df$SCORE_LEVEL ,df$estado_civil, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+           prop.chisq = FALSE,chisq = TRUE)
+
+summary(df$estado_civil)
+
+
+```
+
+#### Conclusao da Hipotese 2.3
+
+Embora não exista um percentual com grande diferencas entre os valores do atributo *estado_civil* em sua relação com SCORE LEVEL, podemos notar que o valor *solteiro* possui uma alteração moderada onde **44.4%** dos individuos possuem *SCORE_NEGATIVO* e apenas **37.5** com *SCORE_POSITIVO*.
+
+O *p_valor* de **0.00000000002336419** indica que devemos rejeitar uma Hipotese nula de não associação, visto que **p_value < 0.05**, logo, existe uma associação significante entre o atributo **estado_civil** e o **SCORE_LEVEL**.
+
+
+### H 2.4 - Possui trabalho
+
+```{r Trabalha, echo=FALSE, warning=FALSE, message=FALSE}
+
+#Tabela de Frequencia
+freq(df$trabalha)
+
+# Pie Chart de distribuição no Dataframe
+pie(table(df$trabalha),labels = c("Não Trabalha", "Trabalha"), 
+    col = c("lightblue", "seashell2"), main = "Distribuição de trabalhadores ativos")
+
+# Exibe tabela de proporcao com SCORE_LEVEL
+tabela = exibe_tabela_proporcao(df$SCORE_LEVEL,df$trabalha,"Possui trabalho ativo")
+print("Tabela de proporção Trabalho ativo X SCORE_CREDITO ")
+print(tabela)
+pie(tabela, 
+    labels = c("Não Trabalha Score Negativo", "Nao Trabalha Score Positivo",
+               "Trabalha Score Negativo", "Trabalha Score Positivo"), 
+    main = "Relação entre Trabalhar e Score de Credito",
+    col = c("red3", "green3", "red", "green"))
+
+gera_grafico_empilhado("trabalha", "Trabalho Ativo")
+
+# Tabela de frequencia bivariada
+CrossTable(df$SCORE_LEVEL ,df$trabalha, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+           prop.chisq = FALSE,chisq = TRUE)
+```
+
+#### Conclusao da Hipotese 2.4
+
+**91.1%** da populacao analisada trabalha portanto o maior impacto nos graficos pode ser visto entre quem *nao trabalha*. Os graficos e tabelas mostram que **12.8%** de quem nao trabalha possui *SCORE_NEGATIVO*, e apenas **1.3%** destes que não trabalham possuem *SCORE_POSITIVO*, demonstrando uma possivel associação entre estes dados.
+
+Tanto o *p_valor* de **0.000000000000000000000000000000000000000000000000000000000000000000000000000000000005167939** quanto com a correcao de YATES *0.00000000000000000000000000000000000000000000000000000000000000000000000000000000001057857* indica que devemos rejeitar uma Hipotese nula de não associação, visto que **p_value < 0.05**, logo, existe uma associação significante entre o atributo **trabalha** e o **SCORE_LEVEL**.
+
+
+### H 2.5 - Possui casa propria
+
+```{r Casa propria, echo=FALSE, warning=FALSE, message=FALSE}
+#Tabela de Frequencia
+freq(df$casa_propria)
+
+# Pie Chart de distribuição no Dataframe
+pie(table(df$casa_propria),labels = c("Nao Possui Casa Propria", "Possui Casa Propria"), 
+    col = c("lightblue", "seashell2"), main = "Distribuição de quem possui Casa Propria")
+
+# Exibe tabela de proporcao com SCORE_LEVEL
+tabela = exibe_tabela_proporcao(df$SCORE_LEVEL,df$casa_propria,"Possui casa propria ou nao")
+print("Tabela de proporção Possui Casa Propria X SCORE_CREDITO ")
+print(tabela)
+pie(tabela, 
+    labels = c("Não Possui CP Score Negativo", "Nao Possui CP Score Positivo",
+               "Possui CP Score Negativo", "Possui CP Score Positivo"), 
+    main = "Relação entre Possuir Casa Propria e Score de Crédito",
+    col = c("red3", "green3", "red", "green"))
+
+gera_grafico_empilhado("casa_propria", "Casa Propria")
+
+# Tabela de frequencia bivariada
+CrossTable(df$SCORE_LEVEL ,df$casa_propria, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+           prop.chisq = FALSE,chisq = TRUE)
+```
+
+#### Conclusao da Hipotese 2.5
+
+Os dados mostram que **71.7%** de quem *nao possui casa propria* possuem *SCORE_NEGATIVO*. Isso é um percentual consideravel e mostra um forte potencial de associacao entre este atributo e o calculo de SCORE.
+
+Tanto o *p_valor* de **0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001455239** quanto com a correcao de YATES *0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002263411* indica que devemos rejeitar uma Hipotese nula de não associação, visto que **p_value < 0.05**, logo, existe uma associação significante entre o atributo **casa_propria** e o **SCORE_LEVEL**.
+
+
+### H 2.6 - Regiao da moradia
+
+```{r Regiao_moradia, echo=FALSE, warning=FALSE, message=FALSE}
+
+labelvariavel = "Regiao de Moradia"
+variavel =df$reg_moradia
+
+#Tabela de Frequencia
+freq(variavel)
+
+gera_barra_simples(variavel,labelvariavel)
+
+#tabela de contingencia
+print(paste("Tabela de contingencia",labelvariavel,"X SCORE_CREDITO"))
+tabela_contingencia <- table(variavel, df$SCORE_LEVEL)
+print(tabela_contingencia)
+
+gera_barra_comparativo(variavel, labelvariavel)
+
+# Tabela de proporção
+print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO"))
+prop.table(tabela_contingencia, margin = 1)*100
+
+gera_grafico_empilhado("reg_moradia", labelvariavel)
+
+# Tabela de frequencia bivariada
+CrossTable(df$SCORE_LEVEL ,df$reg_moradia, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+           prop.chisq = FALSE,chisq = TRUE)
+
+```
+
+#### Conclusao da Hipotese 2.5
+
+O grafico de barras bi-valorado evidencia que existe um menor numero de *SCORE_NEGATIVO* entre os que mora na *região 1* ou *2*. Tais regioes sao as unicas onde o *SCORE_POSITVO* é maior que o *SCORE_NEGATIVO*, o que mostra uma possivel associacao entre a *regiao de moradia* e o *SCORE_LEVEL*.
+
+
+O *p_valor* de **0.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002761777** indica que devemos rejeitar uma Hipotese nula de não associação, visto que **p_value < 0.05**, logo, existe uma associação bastante significante entre o atributo **reg_moradia** e o **SCORE_LEVEL**.
+
+## Conclusoes gerais sobre a Hipotese 2:
+
+Todas as variaveis qualitativas: *escola*, *sexo*, *estado_civil*, *trabalha*, *casa_propria* e *reg_moradia* possuem, conforme demonstrado, **p_valor < 0.05** sugerindo que os dados observados são altamente improváveis sob a hipotese nula, ou seja, existe sim uma associação entre estas variaveis e SCORE_LEVEL. Os demais graficos apresentados corroboram com esta analise.
+
+
+## Hipotese 3 - A quantidade de dependentes, quantidade de cartoes e quantidade de carros influenciam no Credit Score?
+
+Por fim temos as analises das variaveis quantitativas discretas e seu impacto no *SCORE_CREDITO*.
+
+### H 3.1 - Quantidade de dependentes
+
+```{r Qte dependentes, echo=FALSE}
+labelvariavel = "Qte Dependentes"
+variavel = df$Qte_dependentes
+
+#Tabela de Frequencia
+freq(variavel)
+
+gera_barra_simples(variavel,labelvariavel)
+
+#tabela de contingencia
+print(paste("Tabela de contingencia",labelvariavel,"X SCORE_CREDITO"))
+tabela_contingencia <- table(variavel, df$SCORE_LEVEL)
+print(tabela_contingencia)
+
+gera_barra_comparativo(variavel, labelvariavel)
+
+# Tabela de proporção
+print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO"))
+prop.table(tabela_contingencia, margin = 1)*100
+
+gera_grafico_empilhado("Qte_dependentes", labelvariavel)
+
+# Tabela de frequencia bivariada
+CrossTable(df$SCORE_LEVEL ,variavel, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+           prop.chisq = FALSE,chisq = TRUE)
+
+```
+
+### H 3.2 - Quantidade de cartoes
+
+```{r Qte cartoes, echo=FALSE}
+labelvariavel = "Qte Cartoes"
+variavel =df$Qte_cartoes
+
+#Tabela de Frequencia
+freq(variavel)
+
+gera_barra_simples(variavel,labelvariavel)
+
+#tabela de contingencia
+print(paste("Tabela de contingencia",labelvariavel,"X SCORE_CREDITO"))
+tabela_contingencia <- table(variavel, df$SCORE_LEVEL)
+print(tabela_contingencia)
+
+gera_barra_comparativo(variavel, labelvariavel)
+
+# Tabela de proporção
+print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO"))
+prop.table(tabela_contingencia, margin = 1)*100
+
+gera_grafico_empilhado("Qte_cartoes", labelvariavel)
+
+# Tabela de frequencia bivariada
+CrossTable(df$SCORE_LEVEL ,variavel, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+           prop.chisq = FALSE,chisq = TRUE)
+
+```
+
+### H 3.3 - Quantidade de carros
+
+```{r Qte carros,echo=FALSE, warning=FALSE, message=FALSE}
+labelvariavel = "Qte Carros"
+variavel =df$Qte_carros
+
+#Tabela de Frequencia
+freq(variavel)
+
+gera_barra_simples(variavel,labelvariavel)
+
+#tabela de contingencia
+print(paste("Tabela de contingencia",labelvariavel,"X SCORE_CREDITO"))
+tabela_contingencia <- table(variavel, df$SCORE_LEVEL)
+print(tabela_contingencia)
+
+gera_barra_comparativo(variavel, labelvariavel)
+
+# Tabela de proporção
+print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO"))
+prop.table(tabela_contingencia, margin = 1)*100
+
+gera_grafico_empilhado("Qte_carros", labelvariavel)
+
+# Tabela de frequencia bivariada
+CrossTable(df$SCORE_LEVEL ,variavel, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+           prop.chisq = FALSE,chisq = TRUE)
+
+```
