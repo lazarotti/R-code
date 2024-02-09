@@ -191,7 +191,7 @@ gera_grafico_empilhado <- function (variavel, nomevariavel){
 
 ## Objetivo
 
-Este relatorio é a Parte 1 de um estudo sobre a base de clientes da **Quantum Finance**. O estudo sobre a base tem como objetivo auxiliar na elaboracao de um novo modelo de *Credit Scoring* que possa trazer novos clientes com o perfil de baixo risco de crédito.
+Este relatorio é um estudo sobre a base de clientes da **Quantum Finance**. Nosso objetivo é que esta analise ajude na elaboracao de um novo modelo de *Credit Scoring* que possa trazer novos clientes com o perfil de baixo risco de crédito.
 
 O relatório com as analises dos dados esta organizado e com as interpretacoes dos resultados.
 
