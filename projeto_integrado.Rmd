@@ -12,7 +12,7 @@ output:
   word_document: default
 ---
 
-```{r setup, include=FALSE}
+```{r setup,  echo=FALSE, warning=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(base)
 library(readr)
@@ -21,7 +21,8 @@ library(summarytools)
 library(ggplot2)
 library(gmodels)
 library(dplyr)
-
+library(PerformanceAnalytics)
+library(corrplot)
 
 df <- read_delim("Base_ScoreCredito_QuantumFinance.csv", 
                  delim = ";", escape_double = FALSE, locale = locale(decimal_mark = ",", 
@@ -101,7 +102,7 @@ describevar<- function(x,nomedavariavel) {
 #gera histograma comparativo com score_level
 gera_hist_comp <- function(variavel, breaks, nomevariavel){
   ggplot(df, aes(x = variavel, fill = factor(SCORE_LEVEL))) +
-      geom_histogram(breaks=breaks, binwidth = 5, position = "identity", alpha = 0.7, na.rm = TRUE) +
+    geom_histogram(breaks=breaks, binwidth = 5, position = "identity", alpha = 0.7, na.rm = TRUE) +
     labs(title = paste("Relação entre ", nomevariavel, " e SCORE Level"),
          x = nomevariavel,
          y = "Frequencia") +
@@ -111,12 +112,10 @@ gera_hist_comp <- function(variavel, breaks, nomevariavel){
 }
 
 # Exibe tabela de proporcao baseado no prop.table
-exibe_tabela_proporcao <-function(groupby_var, column_var, nomevariavel=""){
+exibe_tabela_proporcao <-function(groupby_var, column_var){
   
   # Tabela de contingencia
-   tabela_contingencia <- table(factor(groupby_var),factor(column_var), useNA = "no")
-   
-  
+  tabela_contingencia <- table(factor(groupby_var),factor(column_var), useNA = "no")
   return(na.omit(prop.table(tabela_contingencia, margin = 1)*100))
 }
 
@@ -144,12 +143,12 @@ gera_barra_comparativo <- function(variavel, nomevariavel, tipo="dodge"){
 # gera grafico dispersão relatico a Credit Score
 gera_grafico_dispersao <- function(variavel, nomevariavel){
   
-ggplot(filter(df, !is.na(!!sym(variavel))),aes(x=!!sym(variavel),y=SCORE_CREDITO)) +
-     geom_point() +
-     geom_smooth(method = lm, se=FALSE) +
-  labs(x = labelvariavel, y = "Credit Score") + 
-ggtitle(paste("Dispercao", nomevariavel,"X Credit Score"))
-
+  ggplot(filter(df, !is.na(!!sym(variavel))),aes(x=!!sym(variavel),y=SCORE_CREDITO)) +
+    geom_point() +
+    geom_smooth(method = lm, se=FALSE) +
+    labs(x = labelvariavel, y = "Credit Score") + 
+    ggtitle(paste("Dispercao", nomevariavel,"X Credit Score"))
+  
 }
 
 # Gera grafico 100% empilhado relativo a SCORE_LEVEL
@@ -172,8 +171,8 @@ gera_grafico_empilhado <- function (variavel, nomevariavel){
   
   freq_final <- freq_SCORE_LEVEL %>%
     rbind(freq_col_total)
-
-
+  
+  
   ggplot(freq_final,
          aes(
            x = SCORE_LEVEL,
@@ -203,7 +202,6 @@ Atraves da analise estatistica das colunas entendermos a base e como ela se comp
 
 ```{r Descricao dataset }
 # ajustar o tipo das colunas numericas que sao qualitativas categoricas
-
 df$casa_propria <- factor(df$casa_propria, labels = c("Nao possui", "Possui"))
 df$reg_moradia <- factor(df$reg_moradia)
 df$trabalha <- factor(df$trabalha, labels = c("Nao trabalha","Trabalha"))
@@ -217,9 +215,7 @@ df$escola <- factor(df$escola, levels = unique(df$escola))
 df$vl_imovel_em_mil <- ifelse(df$vl_imovel_em_mil == 0, NA, df$vl_imovel_em_mil)
 
 #setar NA para estado civil, caso valor da String seja na
-#df$estado_civil <- ifelse(df$estado_civil== "na", NA,df$estado_civil)
 df$estado_civil[df$estado_civil == "na"] <- NA
-
 
 #excluir a coluna id pq é irrelevante para as analises
 df <- subset(df, select = -id)
@@ -232,14 +228,12 @@ str(df)
 ```
 
 # Analise exploratoria de dados
-Abaixo teremos analises descritivas dos dados de maneira univariada, acompanhados tambem de suas  
-correlacoes e associacoes com *Credit Score* para avaliar o credit scoring para concessao de credito pessoal. Teremos tambem as hipoteses a serem trabalhadas para a elaboracao de um novo modelo.
-Seguindo parametros do [SERASA](https://www.serasa.com.br/score/blog/score-positivo/), scores acima de 500 sao tidos como **Positivos**, e abaixo disso **Negativos**.
 
-A categoria de bom ou mau pagador é utilizada para o modelo de inadimplencia PF. Nesse desafio é construir um modelo de credit scoring para conceder credito ou nao.
+Abaixo teremos analises descritivas dos dados de maneira univariada, acompanhadas tambem de suas correlacoes e associacoes com *Credit Score* de forma bivariada para avaliar o credit scoring para concessao de credito pessoal. Teremos tambem as hipoteses a serem trabalhadas para a elaboracao de um novo modelo.
+Seguindo parametros do [SERASA](https://www.serasa.com.br/score/blog/score-positivo/), scores acima de **500** tidos como *"bom"* e *"muito bom"* serao tratados como **Positivos**, e abaixo disso **Negativos**. Estas duas categorias chamadas em nossa analise de *SCORE_LEVEL* serao utilizadas como *atributos qualitativos* para associacao com outras variaveis, enquanto *SCORE_CREDITO* sera utilizado como *atributo quantitativo* para correlacao e variavel resposta na composicao do modelo preditivo.
 
 `
-```{r define SCORE_LEVEL}
+```{r define SCORE_LEVEL, echo=FALSE, warning=FALSE, message=FALSE}
 
 #acima de 500 é score positivo
 df$SCORE_LEVEL <- ifelse(df$SCORE_CREDITO > 500, "SCORE_POSITIVO", "SCORE_NEGATIVO")
@@ -249,7 +243,7 @@ df$SCORE_LEVEL = factor(df$SCORE_LEVEL)
 ```
 
 
-```{r Score credito, echo=FALSE}
+```{r Score credito,echo=FALSE, warning=FALSE, message=FALSE}
 variavel = df$SCORE_CREDITO
 
 freq <- table(df$SCORE_LEVEL)
@@ -269,7 +263,7 @@ describevar(variavel,"Score credito")
 Nesta hipotese vamos explorar as variaveis quantitativas continuas de nossa base a fim de analisar sua influencia no *Credit Score*
 
 ### H 1.1 - Idade
-```{r idade, echo=FALSE}
+```{r idade, echo=FALSE, warning=FALSE, message=FALSE}
 
 variavel = df$idade
 labelvariavel= "Idade"
@@ -287,24 +281,33 @@ df$faixas_idade <-  cut(
 freq(df$faixas_idade)
 describevar(variavel, labelvariavel)
 
-#compara com SCORE_CREDIT
+#compara com SCORE_LEVEL
 gera_hist_comp(df$idade,classes,labelvariavel)
 
 #exibe tabela de proporcao com SCORE_LEVEL
 print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO "))
-exibe_tabela_proporcao(df$faixas_idade, df$SCORE_LEVEL, labelvariavel)
+exibe_tabela_proporcao(df$faixas_idade, df$SCORE_LEVEL)
 
 boxplot(variavel ~ df$SCORE_LEVEL,xlab = "Score Level", ylab = labelvariavel)
 title(paste("Associacao entre", labelvariavel,"e Score Level"))
 
 gera_grafico_dispersao("idade",labelvariavel)
 
-
 ```
+
+#### Conclusao da Hipotese 1.1
+
+O *box-plot* mostra que a mediana do atributo *idade* para *SCORE_POSITIVO* se encontra acima do valor da mesma para *SCORE_NEGATIVO*. Em verdade todo a caixa da faixa de *SCORE_POSITIVO* se encontra acima da *SCORE_NEGATIVO* em todos os quartis, o que indica uma possivel correlacao entre idade e o SCORE_LEVEL.
+
+Tambem é possivel notar na *tabela de frequencia* e no *histograma bivariado* com distribuicao gaussiana que a idade apartir de *~47* anos comeca a ter creditos maiores e diminuir a diferenca para com SCORE_NEGATIVO até aproximadamente os *60* anos.
+
+A presenca de outliers no topo e abaixo dos quartis sao evidencidas pelo *box-plot*, o que tambem pode ser observado no *grafico de dispersao*. A dispersao mostra uma **correlacao positiva**, o que tambem devera ser verificado posteriormente pela analise de *Pearson* nas [conclusoes gerais sobre a Hipotese 1](#c-h1).
+
+
 
 ### H 1.2 - Tempo no ultimo trabalho
 
-```{r Tempo_ultimo_servico, echo=FALSE}
+```{r Tempo_ultimo_servico, echo=FALSE, warning=FALSE, message=FALSE}
 variavel = df$tempo_ultimoservico
 labelvariavel = "Tempo Ultimo Servico"
 k<- encontrar_k(df)
@@ -325,7 +328,7 @@ gera_hist_comp(df$tempo_ultimoservico,classes,labelvariavel)
 
 #exibe tabela de proporcao com SCORE_LEVEL
 print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO "))
-exibe_tabela_proporcao(df$faixas_ultimo_servico, df$SCORE_LEVEL, labelvariavel)
+exibe_tabela_proporcao(df$faixas_ultimo_servico, df$SCORE_LEVEL)
 
 boxplot(variavel ~ df$SCORE_LEVEL,xlab = "Score Level", ylab = labelvariavel)
 title(paste("Associacao entre", labelvariavel,"e Score Level"))
@@ -334,9 +337,17 @@ gera_grafico_dispersao("tempo_ultimoservico",labelvariavel)
 
 ```
 
+#### Conclusao da Hipotese 1.2
+
+Nota-se pela *tabela de frequencia* e pelo *histograma bivariado* que com o passar dos anos de servico, diminue-se o *SCORE_NEGATIVO* e aumenta-se o *SCORE_POSITIVO*, salvo presenca de *ouliers*. O *box-plot* tambem mostra que com mais tempo de servico, mais alto o *SCORE*.
+
+O *box-plot* mostra a presenca de varios outliers principalmente acima e baixo dos limites do *SCORE_NEGATIVO*, enquanto predominantemente apenas abaixo do limite inferior para *SC0RE_POSITIVO*. 
+
+O *grafico de dispersao* sugere uma correlacao positiva entre *tempo_ultimo_servico* e *CREDITO_SCORE*, a ser verificado posteriormente pela analise de *Pearson* nas [conclusoes gerais sobre a Hipotese 1](#c-h1).
+
 ### H.1.3 - Salario (em mil)
 
-```{r Salarios, echo=FALSE}
+```{r Salarios, echo=FALSE, warning=FALSE, message=FALSE}
 variavel = df$vl_salario_mil
 labelvariavel = "Valor Salario (em mil)"
 
@@ -358,7 +369,7 @@ gera_hist_comp(variavel,classes,labelvariavel)
 
 #exibe tabela de proporcao com SCORE_LEVEL
 print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO "))
-exibe_tabela_proporcao(df$faixas_salarios,df$SCORE_LEVEL, labelvariavel)
+exibe_tabela_proporcao(df$faixas_salarios,df$SCORE_LEVEL)
 
 boxplot(variavel ~ df$SCORE_LEVEL,xlab = "Score Level", ylab = labelvariavel)
 title(paste("Associacao entre", labelvariavel,"e Score Level"))
@@ -366,6 +377,13 @@ title(paste("Associacao entre", labelvariavel,"e Score Level"))
 gera_grafico_dispersao("vl_salario_mil",labelvariavel)
 
 ```
+
+#### Conclusao da Hipotese 1.3
+
+O *box-plot* mostra a presenca de outliers acima dos limites superiores para *SCORE_NEGATIVO*, o que explica no *histograma bivariado* algumas faixas de salario onde a tendencia seria aumentar o SCORE_LEVEL, sendo dimuido. De qualquer forma isso é minimizado se observada a *mediana* no *box-plot* para *SCORE_POSITIVO*, muito superior a mediana para *SCORE_NEGATIVO*, conforme a hipotese de correlacao para variavel de *vl_salario_mil* para com *CREDITO_SCORE* sugere.
+
+O grafico de dispersao indica correlacao positiva entre *vl_salario_mil* e *CREDITO_SCORE*, a ser verificado posteriormente pela analise de *Pearson* nas [conclusoes gerais sobre a Hipotese 1](#c-h1).
+
 
 ### H.1.4 - Valor da moradia (em mil)
 
@@ -395,20 +413,25 @@ gera_hist_comp(df$vl_imovel_em_mil,classes,labelvariavel)
 
 #exibe tabela de proporcao com SCORE_LEVEL
 print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO "))
-exibe_tabela_proporcao(df$faixas_moradia, df$SCORE_LEVEL,labelvariavel)
-
+exibe_tabela_proporcao(df$faixas_moradia, df$SCORE_LEVEL)
 
 boxplot(df$vl_imovel_em_mil ~ df$SCORE_LEVEL,xlab = "Score Level", ylab = labelvariavel, na.action = na.exclude)
 title(paste("Associacao entre", labelvariavel,"e Score Level"))
 
 gera_grafico_dispersao("vl_imovel_em_mil",labelvariavel)
 
-
 ```
 
-# Conclusões sobre a Hipotese 1:
+#### Conclusao da Hipotese 1.4
 
-Todos os graficos apresentados sobre cada uma das variaveis quantitativas continuas acima demonstram uma associacao das mesmas com o SCORE dos clientes. Esta associacao tambem é comprovada por sua correlacao expressa pela matriz tabular e grafica abaixo e o grafico de calor da correlacao: 
+A *tabela de frequencia* e o *histograma bivariado* mostram que quanto maior o valor do imovel, maior a chance de estar com *SCORE_POSITIVO*. Notavelmente entre a populacao analisada, temos mais individuos com *SCORE_POSITVO* do que *SCORE_NEGATIVO* apartir dos imoveis acima de **590k**. Outro dado interessante que reforca a possivel correlacao é que *100%* daqueles que possuem imovel superior a **1141k** possuem *SCORE_POSITIVO*, sendo que o box-plot nao aponta outliers para o *SCORE_POSITIVO*. A presenca de *outliers* acima do limite superior para *SCORE_NEGATIVO* evidencia a analise de correlacao de que quanto maiore o valor do imovel, maior o credito.
+
+O grafico de dispersao sugere uma correlacao positiva muito forte entre *vl_imovel_em_mil* e *CREDITO_SCORE*, a ser verificado posteriormente pela analise de *Pearson* nas [conclusoes gerais sobre a Hipotese 1](#c-h1).
+
+
+## Conclusoes gerais sobre a Hipotese 1: <a name="c-h1"/>
+ 
+Todos os graficos apresentados sobre cada uma das variaveis quantitativas continuas acima demonstram uma associacao das mesmas com o *SCORE* dos clientes. Esta associacao tambem é comprovada por sua correlacao expressa pela matriz tabular e grafica abaixo e o *grafico de calor da correlacao*: 
 
 ```{r Correlacao, warning=FALSE, message=FALSE, echo=FALSE}
 dadosquant <- df %>%
@@ -422,21 +445,16 @@ dadosquant <- df %>%
 correlacao <- cor(dadosquant)
 print(correlacao)
 
-library(PerformanceAnalytics)
 chart.Correlation(dadosquant, histogram = TRUE)
-
-library(corrplot)
 corrplot(correlacao, type = "upper", method = "number")
-
-
 ```
 
-Como pode-se observar existe forte evidência estatística contra a hipotese nula da nao correlacao destas variaveis quantitativas com **SCORE_CREDITO**, dado que todos os valores sao diferentes de 0, portanto de fato existe uma correlação nos graus abaixo:
+Como pode-se observar existe forte evidencia estatistica contra a hipotese nula da nao correlacao destas variaveis quantitativas com **SCORE_CREDITO**, dado que todos os valores sao diferentes de 0, portanto de fato existe uma correlação nos graus abaixo:
 
-- A **idade** tem uma correlacao positiva fraca com SCORE_CREDITO.
-- O **tempo_ultimoservico** tem uma correlacao positiva moderada com SCORE_CREDITO.
-- O **vl_salario_mil** tem uma correlacao positiva moderada a forte com SCORE_CREDITO.
-- O **vl_imovel_em_mil** tem uma correlacao positiva muito forte com SCORE_CREDITO.
+- A **idade** tem uma correlacao positiva fraca com SCORE_CREDITO (0.13).
+- O **tempo_ultimoservico** tem uma correlacao positiva moderada com SCORE_CREDITO (0.38).
+- O **vl_salario_mil** tem uma correlacao positiva moderada a forte com SCORE_CREDITO (0.44).
+- O **vl_imovel_em_mil** tem uma correlacao positiva muito forte com SCORE_CREDITO (0.79).
 
 
 ## Hipotese 2 - A escolaridade, o sexo, o estado civil, se trabalha, se possui casa propria e a regiao da moradia possuem alguma associacao nos resultados de credito positivo ou negativo?
@@ -458,7 +476,7 @@ pie(table(df$escola),labels = c("Doutorado", "Ensino Fundamental",
     col = c("lightblue", "seashell2", "wheat2", "white","ivory"))
 
 # Exibe tabela de proporcao com SCORE_LEVEL
-tabela = exibe_tabela_proporcao(df$SCORE_LEVEL,df$escola,"Escolaridade")
+tabela = exibe_tabela_proporcao(df$SCORE_LEVEL,df$escola)
 print("Tabela de proporção Escolaridade X SCORE_CREDITO ")
 print(tabela)
 
@@ -475,24 +493,23 @@ pie(tabela,
     col = c("red4", "seagreen4", "red3", "seagreen3","red2",
             "seagreen2", "red1", "lightgreen", "brown3","seagreen1"))
 
-    #col = c("red3", "seagreen2", "red3", "seagreen2","red3",
-    #        "seagreen2", "red3", "seagreen2", "red3","seagreen2"))
+#col = c("red3", "seagreen2", "red3", "seagreen2","red3",
+#        "seagreen2", "red3", "seagreen2", "red3","seagreen2"))
 
 gera_grafico_empilhado("escola", "Escolaridade")
 
-
 # Tabela de frequencia bivariada
-CrossTable(df$SCORE_LEVEL ,df$escola, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+CrossTable(df$SCORE_LEVEL ,df$escola, prop.r = TRUE, prop.c = TRUE, prop.t = FALSE,
            prop.chisq = FALSE,chisq = TRUE)
 
 ```
 
 #### Conclusao da Hipotese 2.1
 
-Os graficos demonstram existir associacao entre **escolaridade** e o **SCORE LEVEL**. Notavelmente os alunos que possuem apenas *Ensino Fundamental* equivalem a **28%** do total das pessoas com *SCORE_NEGATIVO* equanto **12%** com *Ensino Fundamental* equivalem aquelas com **SCORE_POSITIVO**. 
+Os graficos demonstram existir associacao entre *escolaridade* e o *SCORE LEVEL*. Notavelmente os alunos que possuem apenas *Ensino Fundamental* equivalem a **28%** do total das pessoas com **SCORE_NEGATIVO** equanto **12%** com *Ensino Fundamental* equivalem aquelas com **SCORE_POSITIVO**. 
 Com a excecao das pessoas com *Ensino Fundamental*, todos os outros niveis de escolaridade possuem percetual maior para **SCORE_POSITIVO**. 
 
-O *p_valor* de **0.000000000000000000000000000000000000000000000000000000000000000000000000006816781** indica que devemos rejeitar uma Hipotese nula de não associação, visto que **p_value < 0.05**, logo, existe uma associação significante entre o atributo **escola** e o **SCORE_LEVEL**.
+O *p_valor* de **0.000000000000000000000000000000000000000000000000000000000000000000000000006816781** indica que devemos rejeitar uma Hipotese nula de nao associacao, visto que **p_value < 0.05**, logo, existe uma associacao significante entre o atributo *escola* e o *SCORE_LEVEL*.
 
 
 ### H 2.2 - Sexo
@@ -506,7 +523,7 @@ pie(table(df$sexo),labels = c("Mulheres", "Homens"),
     col = c("mistyrose", "lightblue"), main = "Distribuição de Genero")
 
 # Exibe tabela de proporcao com SCORE_LEVEL
-tabela = exibe_tabela_proporcao(df$SCORE_LEVEL,df$sexo,"Sexo")
+tabela = exibe_tabela_proporcao(df$SCORE_LEVEL,df$sexo)
 print("Tabela de proporção Sexo X SCORE_CREDITO ")
 print(tabela)
 
@@ -519,17 +536,16 @@ pie(tabela,
 gera_grafico_empilhado("sexo", "Genero")
 
 # Tabela de frequncia bivariada
-CrossTable(df$SCORE_LEVEL ,df$sexo, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+CrossTable(df$SCORE_LEVEL ,df$sexo, prop.r = TRUE, prop.c = TRUE, prop.t = FALSE,
            prop.chisq = FALSE,chisq = TRUE)
-
 ```
 
 #### Conclusao da Hipotese 2.2
 
-Os graficos e tabelas mostram que 60.3% dos homens possuem SCORE_POSTIVO contra 39.7%, mostrando uma possivel associacao entre este atributo e o SCORE LEVEL.
+Os graficos e tabelas mostram que **60.3%** dos homens possuem **SCORE_POSTIVO** contra **39.7%**, mostrando uma possivel associacao entre este atributo e o *SCORE LEVEL*.
 
 
-O *p_valor* de **0.000000000000000000000000000000000000000000000000000000000000000000000000000000000002640887** indica que devemos rejeitar uma Hipotese nula de não associação, visto que **p_value < 0.05**, logo, existe uma associação significante entre o atributo **sexo** e o **SCORE_LEVEL**.
+Tanto o *p_valor* de **0.000000000000000000000000000000000000000000000000000000000000000000000000000000000002640887** quanto com a correcao de YATES **0.00000000000000000000000000000000000000000000000000000000000000000000000000000000001057857** indica que devemos rejeitar uma Hipotese nula de nao associacao, visto que **p_value < 0.05**, logo, existe uma associacao significante entre o atributo *sexo* e o *SCORE_LEVEL*.
 
 ### H 2.3 - Estado Civil
 
@@ -539,12 +555,12 @@ freq(df$estado_civil)
 
 # Pie Chart de distribuição no Dataframe
 pie(table(df$estado_civil, useNA = "no"),labels = c("Casado", "Divorciado", 
-                                      "Solteiro"), 
+                                                    "Solteiro"), 
     main = "Distribuição de Estado Civil",
     col = c("lightblue2", "seashell2", "wheat2"))
 
 # Exibe tabela de proporcao com SCORE_LEVEL
-tabela = exibe_tabela_proporcao(df$SCORE_LEVEL,df$estado_civil,"Estado Civil")
+tabela = exibe_tabela_proporcao(df$SCORE_LEVEL,df$estado_civil)
 
 print("Tabela de proporção Estado Civil X SCORE_CREDITO ")
 print(tabela)
@@ -560,19 +576,18 @@ pie(tabela,
 gera_grafico_empilhado("estado_civil", "Estado Civil")
 
 # Tabela de frequencia bivariada
-CrossTable(df$SCORE_LEVEL ,df$estado_civil, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+CrossTable(df$SCORE_LEVEL ,df$estado_civil, prop.r = TRUE, prop.c = TRUE, prop.t = FALSE,
            prop.chisq = FALSE,chisq = TRUE)
 
 summary(df$estado_civil)
-
 
 ```
 
 #### Conclusao da Hipotese 2.3
 
-Embora não exista um percentual com grande diferencas entre os valores do atributo *estado_civil* em sua relação com SCORE LEVEL, podemos notar que o valor *solteiro* possui uma alteração moderada onde **44.4%** dos individuos possuem *SCORE_NEGATIVO* e apenas **37.5** com *SCORE_POSITIVO*.
+Embora nao exista um percentual com grande diferencas entre os valores do atributo *estado_civil* em sua relacao com *SCORE LEVEL*, podemos notar que o valor **solteiro** possui uma alteracao moderada onde **44.4%** dos individuos possuem **SCORE_NEGATIVO** e apenas **37.5** com **SCORE_POSITIVO**.
 
-O *p_valor* de **0.00000000002336419** indica que devemos rejeitar uma Hipotese nula de não associação, visto que **p_value < 0.05**, logo, existe uma associação significante entre o atributo **estado_civil** e o **SCORE_LEVEL**.
+O *p_valor* de **0.00000000002336419** indica que devemos rejeitar uma Hipotese nula de nao associacao, visto que **p_value < 0.05**, logo, existe uma associação significante entre o atributo *estado_civil* e o *SCORE_LEVEL*.
 
 
 ### H 2.4 - Possui trabalho
@@ -587,11 +602,11 @@ pie(table(df$trabalha),labels = c("Não Trabalha", "Trabalha"),
     col = c("lightblue", "seashell2"), main = "Distribuição de trabalhadores ativos")
 
 # Exibe tabela de proporcao com SCORE_LEVEL
-tabela = exibe_tabela_proporcao(df$SCORE_LEVEL,df$trabalha,"Possui trabalho ativo")
+tabela = exibe_tabela_proporcao(df$SCORE_LEVEL,df$trabalha)
 print("Tabela de proporção Trabalho ativo X SCORE_CREDITO ")
 print(tabela)
 pie(tabela, 
-    labels = c("Não Trabalha Score Negativo", "Nao Trabalha Score Positivo",
+    labels = c("Nao Trabalha Score Negativo", "Nao Trabalha Score Positivo",
                "Trabalha Score Negativo", "Trabalha Score Positivo"), 
     main = "Relação entre Trabalhar e Score de Credito",
     col = c("red3", "green3", "red", "green"))
@@ -599,15 +614,15 @@ pie(tabela,
 gera_grafico_empilhado("trabalha", "Trabalho Ativo")
 
 # Tabela de frequencia bivariada
-CrossTable(df$SCORE_LEVEL ,df$trabalha, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+CrossTable(df$SCORE_LEVEL ,df$trabalha, prop.r = TRUE, prop.c = TRUE, prop.t = FALSE,
            prop.chisq = FALSE,chisq = TRUE)
 ```
 
 #### Conclusao da Hipotese 2.4
 
-**91.1%** da populacao analisada trabalha portanto o maior impacto nos graficos pode ser visto entre quem *nao trabalha*. Os graficos e tabelas mostram que **12.8%** de quem nao trabalha possui *SCORE_NEGATIVO*, e apenas **1.3%** destes que não trabalham possuem *SCORE_POSITIVO*, demonstrando uma possivel associação entre estes dados.
+**91.1%** da populacao analisada trabalha portanto o maior impacto nos graficos pode ser visto entre quem **nao trabalha**. Os graficos e tabelas mostram que **12.8%** de quem nao trabalha possui **SCORE_NEGATIVO**, e apenas **1.3%** destes que nao trabalham possuem **SCORE_POSITIVO**, demonstrando uma possivel associacao entre estes dados.
 
-Tanto o *p_valor* de **0.000000000000000000000000000000000000000000000000000000000000000000000000000000000005167939** quanto com a correcao de YATES *0.00000000000000000000000000000000000000000000000000000000000000000000000000000000001057857* indica que devemos rejeitar uma Hipotese nula de não associação, visto que **p_value < 0.05**, logo, existe uma associação significante entre o atributo **trabalha** e o **SCORE_LEVEL**.
+Tanto o *p_valor* de **0.000000000000000000000000000000000000000000000000000000000000000000000000000000000005167939** quanto com a correcao de YATES **0.00000000000000000000000000000000000000000000000000000000000000000000000000000000001057857** indica que devemos rejeitar uma Hipotese nula de nao associacao, visto que **p_value < 0.05**, logo, existe uma associacao significante entre o atributo *trabalha* e o *SCORE_LEVEL*.
 
 
 ### H 2.5 - Possui casa propria
@@ -621,27 +636,27 @@ pie(table(df$casa_propria),labels = c("Nao Possui Casa Propria", "Possui Casa Pr
     col = c("lightblue", "seashell2"), main = "Distribuição de quem possui Casa Propria")
 
 # Exibe tabela de proporcao com SCORE_LEVEL
-tabela = exibe_tabela_proporcao(df$SCORE_LEVEL,df$casa_propria,"Possui casa propria ou nao")
+tabela = exibe_tabela_proporcao(df$SCORE_LEVEL,df$casa_propria)
 print("Tabela de proporção Possui Casa Propria X SCORE_CREDITO ")
 print(tabela)
 pie(tabela, 
-    labels = c("Não Possui CP Score Negativo", "Nao Possui CP Score Positivo",
+    labels = c("nao Possui CP Score Negativo", "Nao Possui CP Score Positivo",
                "Possui CP Score Negativo", "Possui CP Score Positivo"), 
-    main = "Relação entre Possuir Casa Propria e Score de Crédito",
+    main = "Relacao entre Possuir Casa Propria e Score de Credito",
     col = c("red3", "green3", "red", "green"))
 
 gera_grafico_empilhado("casa_propria", "Casa Propria")
 
 # Tabela de frequencia bivariada
-CrossTable(df$SCORE_LEVEL ,df$casa_propria, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+CrossTable(df$SCORE_LEVEL ,df$casa_propria, prop.r = TRUE, prop.c = TRUE, prop.t = FALSE,
            prop.chisq = FALSE,chisq = TRUE)
 ```
 
 #### Conclusao da Hipotese 2.5
 
-Os dados mostram que **71.7%** de quem *nao possui casa propria* possuem *SCORE_NEGATIVO*. Isso é um percentual consideravel e mostra um forte potencial de associacao entre este atributo e o calculo de SCORE.
+Os dados mostram que **71.7%** de quem **nao possui casa propria** possuem **SCORE_NEGATIVO**. Isso é um percentual consideravel e mostra um forte potencial de associacao entre este atributo e o calculo de *SCORE*.
 
-Tanto o *p_valor* de **0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001455239** quanto com a correcao de YATES *0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002263411* indica que devemos rejeitar uma Hipotese nula de não associação, visto que **p_value < 0.05**, logo, existe uma associação significante entre o atributo **casa_propria** e o **SCORE_LEVEL**.
+Tanto o *p_valor* de **0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001455239** quanto com a correcao de YATES **0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002263411** indicam que devemos rejeitar uma Hipotese nula de nao associacao, visto que **p_value < 0.05**, logo, existe uma associacao significante entre o atributo **casa_propria** e o **SCORE_LEVEL**.
 
 
 ### H 2.6 - Regiao da moradia
@@ -665,35 +680,46 @@ gera_barra_comparativo(variavel, labelvariavel)
 
 # Tabela de proporção
 print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO"))
-prop.table(tabela_contingencia, margin = 1)*100
+exibe_tabela_proporcao(df$SCORE_LEVEL,df$reg_moradia)
 
 gera_grafico_empilhado("reg_moradia", labelvariavel)
 
 # Tabela de frequencia bivariada
-CrossTable(df$SCORE_LEVEL ,df$reg_moradia, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+CrossTable(df$SCORE_LEVEL ,df$reg_moradia, prop.r = TRUE, prop.c = TRUE, prop.t = FALSE,
            prop.chisq = FALSE,chisq = TRUE)
 
 ```
 
 #### Conclusao da Hipotese 2.5
 
-O grafico de barras bi-valorado evidencia que existe um menor numero de *SCORE_NEGATIVO* entre os que mora na *região 1* ou *2*. Tais regioes sao as unicas onde o *SCORE_POSITVO* é maior que o *SCORE_NEGATIVO*, o que mostra uma possivel associacao entre a *regiao de moradia* e o *SCORE_LEVEL*.
+O grafico de barras bi-valorado evidencia que existe um menor numero de **SCORE_NEGATIVO** entre os que moram na **região 1** ou **2**. Tais regioes sao as unicas onde o **SCORE_POSITVO** é maior que o **SCORE_NEGATIVO**, o que mostra uma possivel associacao entre a *regiao de moradia* e o *SCORE_LEVEL*.
 
 
-O *p_valor* de **0.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002761777** indica que devemos rejeitar uma Hipotese nula de não associação, visto que **p_value < 0.05**, logo, existe uma associação bastante significante entre o atributo **reg_moradia** e o **SCORE_LEVEL**.
+O *p_valor* de **0.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002761777** indica que devemos rejeitar uma Hipotese nula de nao associacao, visto que **p_value < 0.05**, logo, existe uma associacao **bastante** significante entre o atributo **reg_moradia** e o **SCORE_LEVEL**.
 
 ## Conclusoes gerais sobre a Hipotese 2:
 
 Todas as variaveis qualitativas: *escola*, *sexo*, *estado_civil*, *trabalha*, *casa_propria* e *reg_moradia* possuem, conforme demonstrado, **p_valor < 0.05** sugerindo que os dados observados são altamente improváveis sob a hipotese nula, ou seja, existe sim uma associação entre estas variaveis e SCORE_LEVEL. Os demais graficos apresentados corroboram com esta analise.
+Dentre as variaveis analisadas, *estado_civil* possui o valor de *Qui-Quadrado* muito inferior as demais:
 
+|Atributo |Qui^square |  
+|--|--|
+| escola  | 351.9007 |
+| sexo | 378.499 |
+| estado_civil | **48.95963** |
+| trabalha | 377.1598  |
+| casa_propria | 407.2491 |
+| reg_moradia | **807.498**  |
 
-## Hipotese 3 - A quantidade de dependentes, quantidade de cartoes e quantidade de carros influenciam no Credit Score?
+Isso sugere, comparada aos demais atributos, que *estado_civil* tem um associacao **mais fraca** com *SCORE LEVEL*, do que as outras variaveis analisadas nesta Hipotese, enquanto *reg_moradia* tem a associacao **mais forte**.
 
-Por fim temos as analises das variaveis quantitativas discretas e seu impacto no *SCORE_CREDITO*.
+## Hipotese 3 - A quantidade de dependentes, quantidade de cartoes e quantidade de carros possuem alguma associacao nos resultados de credito positivo ou negativo?
+
+Por fim temos as analises das variaveis quantitativas discretas e seu impacto no *SCORE* da populacao. Pelo fato de existir pouca diversidade de valores nestas variaveis e muita concentracao de dados em poucas faixas, a analise se dara comparando seus valores com o atributo qualitativo **SCORE_LEVEL** em vez da quantitativa **SCORE_CREDITO**, portanto uma analise qualitativa.
 
 ### H 3.1 - Quantidade de dependentes
 
-```{r Qte dependentes, echo=FALSE}
+```{r Qte dependentes,echo=FALSE, warning=FALSE, message=FALSE}
 labelvariavel = "Qte Dependentes"
 variavel = df$Qte_dependentes
 
@@ -709,9 +735,9 @@ print(tabela_contingencia)
 
 gera_barra_comparativo(variavel, labelvariavel)
 
-# Tabela de proporção
+# Tabela de proporcao
 print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO"))
-prop.table(tabela_contingencia, margin = 1)*100
+exibe_tabela_proporcao(df$SCORE_LEVEL,variavel)
 
 gera_grafico_empilhado("Qte_dependentes", labelvariavel)
 
@@ -721,9 +747,16 @@ CrossTable(df$SCORE_LEVEL ,variavel, prop.r = TRUE, prop.c = FALSE, prop.t = FAL
 
 ```
 
+#### Conclusao da Hipotese 3.1
+
+O *grafico de barras bi-valorado* assim como o *grafico 100% empilhado* mostram que quanto mais dependentes, mais o **SCORE_POSITIVO** tende a subir de percentual e o **SCORE_NEGATIVO** diminuir, sendo assim, uma possivel associacao parece existir entre estas variaveis.
+
+
+O *p_valor* de **0.000000006803984** indica que devemos rejeitar uma Hipotese nula de nao associacao, visto que **p_value < 0.05**, logo, existe uma associacao significante entre o atributo *Qte_dependentes* e o *SCORE_LEVEL*. 
+
 ### H 3.2 - Quantidade de cartoes
 
-```{r Qte cartoes, echo=FALSE}
+```{r Qte cartoes,echo=FALSE, warning=FALSE, message=FALSE}
 labelvariavel = "Qte Cartoes"
 variavel =df$Qte_cartoes
 
@@ -733,23 +766,29 @@ freq(variavel)
 gera_barra_simples(variavel,labelvariavel)
 
 #tabela de contingencia
-print(paste("Tabela de contingencia",labelvariavel,"X SCORE_CREDITO"))
+print(paste("Tabela de contingencia",labelvariavel,"X SCORE_LEVEL"))
 tabela_contingencia <- table(variavel, df$SCORE_LEVEL)
 print(tabela_contingencia)
 
 gera_barra_comparativo(variavel, labelvariavel)
 
 # Tabela de proporção
-print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO"))
-prop.table(tabela_contingencia, margin = 1)*100
+print(paste("Tabela de proporção",labelvariavel,"X SCORE_LEVEL"))
+exibe_tabela_proporcao(df$SCORE_LEVEL,variavel)
 
 gera_grafico_empilhado("Qte_cartoes", labelvariavel)
 
 # Tabela de frequencia bivariada
-CrossTable(df$SCORE_LEVEL ,variavel, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+CrossTable(df$SCORE_LEVEL ,variavel, prop.r = TRUE, prop.c = TRUE, prop.t = FALSE,
            prop.chisq = FALSE,chisq = TRUE)
 
 ```
+
+#### Conclusao da Hipotese 3.2
+
+A quantidade total de pessoas com um unico cartao é **93%** da populacao, portanto os graficos apresentados podem trazer um vies pela falta de dados relevantes com demais valores. Feita esta observacao, nota-se que pessoas com mais cartoes tendem a ter um **SCORE_POSITIVO**, e a tendencia de menos cartoes um **SCORE_NEGATIVO**, o que mostra uma associacao entre *Qte_cartoes* e *SCORE_LEVEL*.O percentual de **SCORE_POSITIVO** é sempre maior para quem possui mais de **1** cartao.
+
+O *p_valor* de **0.000000006803984** indica que devemos rejeitar uma Hipotese nula de nao associacao, visto que **p_value < 0.05**, logo, existe uma associacao significante entre o atributo *Qte_dependentes* e o *SCORE_LEVEL*. 
 
 ### H 3.3 - Quantidade de carros
 
@@ -763,20 +802,41 @@ freq(variavel)
 gera_barra_simples(variavel,labelvariavel)
 
 #tabela de contingencia
-print(paste("Tabela de contingencia",labelvariavel,"X SCORE_CREDITO"))
+print(paste("Tabela de contingencia",labelvariavel,"X SCORE_LEVEL"))
 tabela_contingencia <- table(variavel, df$SCORE_LEVEL)
 print(tabela_contingencia)
 
 gera_barra_comparativo(variavel, labelvariavel)
 
 # Tabela de proporção
-print(paste("Tabela de proporção",labelvariavel,"X SCORE_CREDITO"))
-prop.table(tabela_contingencia, margin = 1)*100
+print(paste("Tabela de proporção",labelvariavel,"X SCORE_LEVEL"))
+exibe_tabela_proporcao(df$SCORE_LEVEL,variavel)
 
 gera_grafico_empilhado("Qte_carros", labelvariavel)
 
 # Tabela de frequencia bivariada
-CrossTable(df$SCORE_LEVEL ,variavel, prop.r = TRUE, prop.c = FALSE, prop.t = FALSE,
+CrossTable(df$SCORE_LEVEL ,variavel, prop.r = TRUE, prop.c = TRUE, prop.t = FALSE,
            prop.chisq = FALSE,chisq = TRUE)
 
 ```
+
+#### Conclusao da Hipotese 3.3
+
+De todas as pessoas com **SCORE_NEGATIVO**, quase metade (**48.7%**) nao possuem carro, equanto entre as pessoas com **SCORE_POSITIVO** apenas **29.8%** nao possuim carro. Este e os demais percentuais nas tabelas e graficos levam a interpretacao de uma possivel associacao entre *Qte_carros* e *SCORE_LEVEL*.
+
+O *p_valor* de **0.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001631842** indica que devemos rejeitar uma Hipotese nula de nao associacao, visto que **p_value < 0.05**, logo, existe uma associacao significante entre o atributo *Qte_dependentes* e o *SCORE_LEVEL*. 
+
+## Conclusoes gerais sobre a Hipotese 3:
+
+Devido a limitacoes sobre a quantidade de dados em alguns dos valores das variaveis, executamos graficamente algumas comparacoes qualitativas sobre as variaveis, assim como teste do *Qui-Quadrado* sobre cada uma delas, em vez de usar graficos de dispersao e analise quantitativa de *Pearson*. Ambas analises resultaram na associacao entre as variaveis quantitativas discretas de nosso modelo com as faixas de *SCORE_POSITIVO* e *SCORE_NEGATIVO*, que nos indicam os bons e mals pagadores.
+
+Todas as variaveis analisadas nesta Hipotese (*Qte_dependentes*, *Qte_cartoes*, *Qte_carros*) possuem **p_valor < 0.05** O que demonstra uma associacao significante com nossas duas faixas de SCORE.
+Um fato a se notar é que o valor para *Qui-Quadrado* para *Qte_dependentes* se mostrou muito inferior as demais as variaveis:
+
+|Atributo |Qui^square |  
+|--|--|
+| Qte_dependentes | **46.61581** |
+| Qte_cartoes | **699.586** |
+| Qte_carros | 583.8772 |
+
+Isso sugere, comparada aos demais atributos, *Qte_dependentes* tem um associacao **mais fraca** com *SCORE LEVEL*, do que as outras variaveis analisadas nesta Hipotese, enquanto *Qte_cartoes* tem a associacao **mais forte**.
